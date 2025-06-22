@@ -29,7 +29,6 @@ dependencies = [
     "mcp>=1.1.0",
     "click>=8.1.0",
     "psutil>=5.9.0",
-    "xmlrpc-client>=1.0.0",
 ]
 
 [project.optional-dependencies]

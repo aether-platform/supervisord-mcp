@@ -109,7 +109,21 @@ Configure in your AI agent using the **recommended stdio transport**:
   "mcpServers": {
     "supervisord-mcp": {
       "command": "uv",
-      "args": ["run", "supervisord-mcp", "mcp"]
+      "args": ["run", "supervisord-mcp", "mcp"],
+      "cwd": "/path/to/your/project"
+    }
+  }
+}
+```
+
+For different project setups:
+```json
+{
+  "mcpServers": {
+    "supervisord-mcp": {
+      "command": "uv",
+      "args": ["run", "supervisord-mcp", "mcp"],
+      "cwd": "/app"
     }
   }
 }

@@ -5,7 +5,8 @@ CLI interface for Supervisord MCP.
 import asyncio
 import logging
 import sys
-from typing import Optional
+from collections.abc import Callable
+from typing import Any
 
 import click
 
@@ -13,22 +14,23 @@ from .manager import SupervisordManager
 from .mcp_server import SupervisordMCPServer
 
 
-def setup_logging(verbose: bool = False):
+def setup_logging(verbose: bool = False) -> None:
     """Setup logging configuration."""
     level = logging.DEBUG if verbose else logging.INFO
     logging.basicConfig(
         level=level,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        handlers=[logging.StreamHandler(sys.stdout)]
+        handlers=[logging.StreamHandler(sys.stdout)],
     )
 
 
 @click.group()
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose logging")
-@click.option("--server-url", default="http://localhost:9001/RPC2", 
-              help="Supervisord XML-RPC server URL")
+@click.option(
+    "--server-url", default="http://localhost:9001/RPC2", help="Supervisord XML-RPC server URL"
+)
 @click.pass_context
-def cli(ctx: click.Context, verbose: bool, server_url: str):
+def cli(ctx: click.Context, verbose: bool, server_url: str) -> None:
     """Supervisord MCP - Process management with MCP integration."""
     setup_logging(verbose)
     ctx.ensure_object(dict)
@@ -38,7 +40,7 @@ def cli(ctx: click.Context, verbose: bool, server_url: str):
 
 @cli.command()
 @click.pass_context
-async def mcp(ctx: click.Context):
+async def mcp(ctx: click.Context) -> None:
     """Start MCP server for AI agent integration."""
     server_url = ctx.obj["server_url"]
     server = SupervisordMCPServer(server_url)
@@ -57,23 +59,27 @@ async def add(
     ctx: click.Context,
     name: str,
     command: str,
-    directory: Optional[str],
+    directory: str | None,
     autostart: bool,
     autorestart: str,
-    numprocs: int
-):
+    numprocs: int,
+) -> None:
     """Add a new process to Supervisord."""
     manager = SupervisordManager(ctx.obj["server_url"])
-    
+
     if not await manager.connect():
         click.echo("Failed to connect to Supervisord", err=True)
         sys.exit(1)
-    
+
     result = await manager.add_process(
-        name, command, directory=directory, autostart=autostart,
-        autorestart=autorestart, numprocs=numprocs
+        name,
+        command,
+        directory=directory,
+        autostart=autostart,
+        autorestart=autorestart,
+        numprocs=numprocs,
     )
-    
+
     if result["status"] == "ok":
         click.echo(f"✓ {result['message']}")
     else:
@@ -84,16 +90,16 @@ async def add(
 @cli.command()
 @click.argument("name")
 @click.pass_context
-async def start(ctx: click.Context, name: str):
+async def start(ctx: click.Context, name: str) -> None:
     """Start a process."""
     manager = SupervisordManager(ctx.obj["server_url"])
-    
+
     if not await manager.connect():
         click.echo("Failed to connect to Supervisord", err=True)
         sys.exit(1)
-    
+
     result = await manager.start_process(name)
-    
+
     if result["status"] == "ok":
         click.echo(f"✓ {result['message']}")
     else:
@@ -104,16 +110,16 @@ async def start(ctx: click.Context, name: str):
 @cli.command()
 @click.argument("name")
 @click.pass_context
-async def stop(ctx: click.Context, name: str):
+async def stop(ctx: click.Context, name: str) -> None:
     """Stop a process."""
     manager = SupervisordManager(ctx.obj["server_url"])
-    
+
     if not await manager.connect():
         click.echo("Failed to connect to Supervisord", err=True)
         sys.exit(1)
-    
+
     result = await manager.stop_process(name)
-    
+
     if result["status"] == "ok":
         click.echo(f"✓ {result['message']}")
     else:
@@ -124,16 +130,16 @@ async def stop(ctx: click.Context, name: str):
 @cli.command()
 @click.argument("name")
 @click.pass_context
-async def restart(ctx: click.Context, name: str):
+async def restart(ctx: click.Context, name: str) -> None:
     """Restart a process."""
     manager = SupervisordManager(ctx.obj["server_url"])
-    
+
     if not await manager.connect():
         click.echo("Failed to connect to Supervisord", err=True)
         sys.exit(1)
-    
+
     result = await manager.restart_process(name)
-    
+
     if result["status"] == "ok":
         click.echo(f"✓ {result['message']}")
     else:
@@ -141,18 +147,18 @@ async def restart(ctx: click.Context, name: str):
         sys.exit(1)
 
 
-@cli.command()
+@cli.command(name="list-processes")
 @click.pass_context
-async def list_processes(ctx: click.Context):
+async def list_processes(ctx: click.Context) -> None:
     """List all processes."""
     manager = SupervisordManager(ctx.obj["server_url"])
-    
+
     if not await manager.connect():
         click.echo("Failed to connect to Supervisord", err=True)
         sys.exit(1)
-    
+
     result = await manager.list_processes()
-    
+
     if result["status"] == "ok":
         processes = result["processes"]
         if processes:
@@ -162,8 +168,14 @@ async def list_processes(ctx: click.Context):
                 name = proc.get("name", "unknown")
                 pid = proc.get("pid", 0)
                 description = proc.get("description", "")
-                
-                status_icon = "🟢" if status == "RUNNING" else "🔴" if status in ["STOPPED", "FATAL"] else "🟡"
+
+                status_icon = (
+                    "🟢"
+                    if status == "RUNNING"
+                    else "🔴"
+                    if status in ["STOPPED", "FATAL"]
+                    else "🟡"
+                )
                 click.echo(f"{status_icon} {name}: {status}")
                 if pid:
                     click.echo(f"   PID: {pid}")
@@ -180,16 +192,16 @@ async def list_processes(ctx: click.Context):
 @cli.command()
 @click.argument("name")
 @click.pass_context
-async def status(ctx: click.Context, name: str):
+async def status(ctx: click.Context, name: str) -> None:
     """Get process status."""
     manager = SupervisordManager(ctx.obj["server_url"])
-    
+
     if not await manager.connect():
         click.echo("Failed to connect to Supervisord", err=True)
         sys.exit(1)
-    
+
     result = await manager.get_process_status(name)
-    
+
     if result["status"] == "ok":
         proc = result["process"]
         click.echo(f"Process: {proc.get('name', 'unknown')}")
@@ -207,16 +219,16 @@ async def status(ctx: click.Context, name: str):
 @click.option("--lines", default=100, help="Number of lines to show")
 @click.option("--stderr", is_flag=True, help="Show stderr instead of stdout")
 @click.pass_context
-async def logs(ctx: click.Context, name: str, lines: int, stderr: bool):
+async def logs(ctx: click.Context, name: str, lines: int, stderr: bool) -> None:
     """Get process logs."""
     manager = SupervisordManager(ctx.obj["server_url"])
-    
+
     if not await manager.connect():
         click.echo("Failed to connect to Supervisord", err=True)
         sys.exit(1)
-    
+
     result = await manager.get_logs(name, lines=lines, stderr=stderr)
-    
+
     if result["status"] == "ok":
         logs = result["logs"]
         if logs:
@@ -234,23 +246,23 @@ async def logs(ctx: click.Context, name: str, lines: int, stderr: bool):
 
 @cli.command()
 @click.pass_context
-async def info(ctx: click.Context):
+async def info(ctx: click.Context) -> None:
     """Get Supervisord system information."""
     manager = SupervisordManager(ctx.obj["server_url"])
-    
+
     if not await manager.connect():
         click.echo("Failed to connect to Supervisord", err=True)
         sys.exit(1)
-    
+
     result = await manager.get_system_info()
-    
+
     if result["status"] == "ok":
         info = result["info"]
         click.echo("Supervisord System Information:")
         click.echo(f"  API Version: {info.get('api_version', 'Unknown')}")
         click.echo(f"  Supervisor Version: {info.get('supervisor_version', 'Unknown')}")
         click.echo(f"  Server URL: {info.get('server_url', 'Unknown')}")
-        state = info.get('state', {})
+        state = info.get("state", {})
         click.echo(f"  State: {state.get('statename', 'Unknown')}")
     else:
         click.echo(f"✗ {result['message']}", err=True)
@@ -259,16 +271,16 @@ async def info(ctx: click.Context):
 
 @cli.command()
 @click.pass_context
-async def reload(ctx: click.Context):
+async def reload(ctx: click.Context) -> None:
     """Reload Supervisord configuration."""
     manager = SupervisordManager(ctx.obj["server_url"])
-    
+
     if not await manager.connect():
         click.echo("Failed to connect to Supervisord", err=True)
         sys.exit(1)
-    
+
     result = await manager.reload_config()
-    
+
     if result["status"] == "ok":
         click.echo(f"✓ {result['message']}")
     else:
@@ -276,16 +288,28 @@ async def reload(ctx: click.Context):
         sys.exit(1)
 
 
-def run_async_command(func):
+def run_async_command(func: Callable[..., Any]) -> Callable[..., Any]:
     """Wrapper to run async click commands."""
-    def wrapper(*args, **kwargs):
+
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
         return asyncio.run(func(*args, **kwargs))
+
     return wrapper
 
 
 # Apply async wrapper to all async commands
-for command_name in ["mcp", "add", "start", "stop", "restart", "list_processes", 
-                     "status", "logs", "info", "reload"]:
+for command_name in [
+    "mcp",
+    "add",
+    "start",
+    "stop",
+    "restart",
+    "list-processes",
+    "status",
+    "logs",
+    "info",
+    "reload",
+]:
     command = cli.commands[command_name]
     command.callback = run_async_command(command.callback)
 

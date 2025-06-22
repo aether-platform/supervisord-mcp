@@ -3,10 +3,11 @@ Main entry point for Supervisord MCP.
 """
 
 import sys
+
 from .cli import cli
 
 
-def main():
+def main() -> None:
     """Main entry point."""
     try:
         cli()

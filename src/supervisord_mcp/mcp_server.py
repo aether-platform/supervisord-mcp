@@ -2,8 +2,8 @@
 MCP Server for Supervisord process management.
 """
 
-from typing import Any
 import logging
+from typing import Any
 
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
@@ -17,16 +17,16 @@ class SupervisordMCPServer:
 
     def __init__(self, server_url: str = "http://localhost:9001/RPC2"):
         """Initialize Supervisord MCP Server.
-        
+
         Args:
             server_url: URL of Supervisord XML-RPC server
         """
-        self.server = Server("supervisord-mcp")
+        self.server: Server = Server("supervisord-mcp")
         self.manager = SupervisordManager(server_url)
         self.logger = logging.getLogger(__name__)
         self._setup_tools()
 
-    def _setup_tools(self):
+    def _setup_tools(self) -> None:
         """Setup MCP tools."""
 
         @self.server.list_tools()
@@ -45,17 +45,17 @@ class SupervisordMCPServer:
                             "autostart": {
                                 "type": "boolean",
                                 "default": False,
-                                "description": "Start automatically on boot"
+                                "description": "Start automatically on boot",
                             },
                             "autorestart": {
                                 "type": "string",
                                 "default": "unexpected",
-                                "description": "Restart policy (true, false, unexpected)"
+                                "description": "Restart policy (true, false, unexpected)",
                             },
                             "numprocs": {
                                 "type": "integer",
                                 "default": 1,
-                                "description": "Number of processes"
+                                "description": "Number of processes",
                             },
                         },
                         "required": ["name", "command"],
@@ -112,13 +112,13 @@ class SupervisordMCPServer:
                             "lines": {
                                 "type": "integer",
                                 "default": 100,
-                                "description": "Number of lines to retrieve"
+                                "description": "Number of lines to retrieve",
                             },
                             "stderr": {
                                 "type": "boolean",
                                 "default": False,
-                                "description": "Get stderr logs instead of stdout"
-                            }
+                                "description": "Get stderr logs instead of stdout",
+                            },
                         },
                         "required": ["name"],
                     },
@@ -167,7 +167,7 @@ class SupervisordMCPServer:
                     result = await self.manager.get_logs(
                         arguments["name"],
                         lines=arguments.get("lines", 100),
-                        stderr=arguments.get("stderr", False)
+                        stderr=arguments.get("stderr", False),
                     )
                 elif name == "get_system_info":
                     result = await self.manager.get_system_info()
@@ -194,7 +194,7 @@ class SupervisordMCPServer:
                                 output += f" - {description}"
                             output += "\n"
                         return [TextContent(type="text", text=output)]
-                    
+
                     elif "process" in result:
                         # Format single process info
                         proc = result["process"]
@@ -204,7 +204,7 @@ class SupervisordMCPServer:
                         output += f"Uptime: {proc.get('description', 'N/A')}\n"
                         output += f"Start time: {proc.get('start', 'N/A')}\n"
                         return [TextContent(type="text", text=output)]
-                    
+
                     elif "logs" in result:
                         # Format logs
                         logs = result["logs"]
@@ -214,23 +214,25 @@ class SupervisordMCPServer:
                         else:
                             output = "No logs available"
                         return [TextContent(type="text", text=output)]
-                    
+
                     elif "info" in result:
                         # Format system info
                         info = result["info"]
                         output = "Supervisord System Information:\n\n"
                         output += f"API Version: {info.get('api_version', 'Unknown')}\n"
-                        output += f"Supervisor Version: {info.get('supervisor_version', 'Unknown')}\n"
+                        output += (
+                            f"Supervisor Version: {info.get('supervisor_version', 'Unknown')}\n"
+                        )
                         output += f"Server URL: {info.get('server_url', 'Unknown')}\n"
-                        state = info.get('state', {})
+                        state = info.get("state", {})
                         output += f"State: {state.get('statename', 'Unknown')}\n"
                         return [TextContent(type="text", text=output)]
-                    
+
                     else:
                         # Generic success message
                         message = result.get("message", "Operation completed successfully")
                         return [TextContent(type="text", text=message)]
-                
+
                 else:
                     # Error case
                     error_msg = result.get("message", "Unknown error occurred")
@@ -240,7 +242,7 @@ class SupervisordMCPServer:
                 self.logger.error(f"Error executing tool {name}: {e}")
                 return [TextContent(type="text", text=f"Error: {str(e)}")]
 
-    async def run(self):
+    async def run(self) -> None:
         """Run the MCP server."""
         self.logger.info("Starting Supervisord MCP Server")
         async with stdio_server() as streams:

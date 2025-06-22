@@ -3,9 +3,9 @@ Supervisord manager for process control operations.
 """
 
 import asyncio
-import xmlrpc.client
-from typing import Any, Dict, List, Optional
 import logging
+import xmlrpc.client
+from typing import Any
 
 
 class SupervisordManager:
@@ -13,17 +13,17 @@ class SupervisordManager:
 
     def __init__(self, server_url: str = "http://localhost:9001/RPC2"):
         """Initialize Supervisord manager.
-        
+
         Args:
             server_url: URL of Supervisord XML-RPC server
         """
         self.server_url = server_url
-        self.server: Optional[xmlrpc.client.ServerProxy] = None
+        self.server: xmlrpc.client.ServerProxy | None = None
         self.logger = logging.getLogger(__name__)
 
     async def connect(self) -> bool:
         """Connect to Supervisord server.
-        
+
         Returns:
             True if connection successful, False otherwise
         """
@@ -44,14 +44,14 @@ class SupervisordManager:
         self,
         name: str,
         command: str,
-        directory: Optional[str] = None,
+        directory: str | None = None,
         autostart: bool = False,
         autorestart: str = "unexpected",
         numprocs: int = 1,
-        **kwargs: Any
-    ) -> Dict[str, Any]:
+        **kwargs: Any,
+    ) -> dict[str, Any]:
         """Add a new process to Supervisord configuration.
-        
+
         Args:
             name: Process name
             command: Command to execute
@@ -60,7 +60,7 @@ class SupervisordManager:
             autorestart: Restart policy
             numprocs: Number of processes
             **kwargs: Additional configuration options
-            
+
         Returns:
             Dict with operation result
         """
@@ -78,36 +78,36 @@ class SupervisordManager:
                 "stdout_logfile": f"/tmp/{name}.log",
                 "stderr_logfile": f"/tmp/{name}_error.log",
             }
-            
+
             if directory:
                 config["directory"] = directory
-                
+
             config.update(kwargs)
-            
+
             # Note: Supervisord doesn't support dynamic process addition via XML-RPC
             # This would typically require updating the configuration file and reloading
             self.logger.warning(
                 "Dynamic process addition not supported. "
                 "Please add process to supervisord.conf and reload configuration."
             )
-            
+
             return {
                 "status": "warning",
                 "message": f"Process '{name}' configuration prepared. "
-                          "Please add to supervisord.conf and reload.",
-                "config": config
+                "Please add to supervisord.conf and reload.",
+                "config": config,
             }
-            
+
         except Exception as e:
             self.logger.error(f"Failed to add process {name}: {e}")
             return {"status": "error", "message": str(e)}
 
-    async def start_process(self, name: str) -> Dict[str, Any]:
+    async def start_process(self, name: str) -> dict[str, Any]:
         """Start a process.
-        
+
         Args:
             name: Process name
-            
+
         Returns:
             Dict with operation result
         """
@@ -124,12 +124,12 @@ class SupervisordManager:
             self.logger.error(f"Failed to start process {name}: {e}")
             return {"status": "error", "message": str(e)}
 
-    async def stop_process(self, name: str) -> Dict[str, Any]:
+    async def stop_process(self, name: str) -> dict[str, Any]:
         """Stop a process.
-        
+
         Args:
             name: Process name
-            
+
         Returns:
             Dict with operation result
         """
@@ -146,12 +146,12 @@ class SupervisordManager:
             self.logger.error(f"Failed to stop process {name}: {e}")
             return {"status": "error", "message": str(e)}
 
-    async def restart_process(self, name: str) -> Dict[str, Any]:
+    async def restart_process(self, name: str) -> dict[str, Any]:
         """Restart a process.
-        
+
         Args:
             name: Process name
-            
+
         Returns:
             Dict with operation result
         """
@@ -172,9 +172,9 @@ class SupervisordManager:
             self.logger.error(f"Failed to restart process {name}: {e}")
             return {"status": "error", "message": str(e)}
 
-    async def list_processes(self) -> Dict[str, Any]:
+    async def list_processes(self) -> dict[str, Any]:
         """List all processes.
-        
+
         Returns:
             Dict with list of processes
         """
@@ -185,18 +185,21 @@ class SupervisordManager:
             processes = await asyncio.get_event_loop().run_in_executor(
                 None, self.server.supervisor.getAllProcessInfo
             )
+            # Ensure processes is a list for type checking
+            if not isinstance(processes, list):
+                processes = []
             self.logger.debug(f"Listed {len(processes)} processes")
             return {"status": "ok", "processes": processes}
         except Exception as e:
             self.logger.error(f"Failed to list processes: {e}")
             return {"status": "error", "message": str(e)}
 
-    async def get_process_status(self, name: str) -> Dict[str, Any]:
+    async def get_process_status(self, name: str) -> dict[str, Any]:
         """Get status of a specific process.
-        
+
         Args:
             name: Process name
-            
+
         Returns:
             Dict with process status
         """
@@ -213,14 +216,14 @@ class SupervisordManager:
             self.logger.error(f"Failed to get status for process {name}: {e}")
             return {"status": "error", "message": str(e)}
 
-    async def get_logs(self, name: str, lines: int = 100, stderr: bool = False) -> Dict[str, Any]:
+    async def get_logs(self, name: str, lines: int = 100, stderr: bool = False) -> dict[str, Any]:
         """Get logs for a process.
-        
+
         Args:
             name: Process name
             lines: Number of lines to retrieve
             stderr: Whether to get stderr logs
-            
+
         Returns:
             Dict with logs
         """
@@ -236,17 +239,17 @@ class SupervisordManager:
                 logs = await asyncio.get_event_loop().run_in_executor(
                     None, self.server.supervisor.readProcessStdoutLog, name, -lines, 0
                 )
-            
-            log_lines = logs.split('\n') if logs else []
+
+            log_lines = str(logs).split("\n") if logs else []
             self.logger.debug(f"Retrieved {len(log_lines)} log lines for process {name}")
             return {"status": "ok", "logs": log_lines}
         except Exception as e:
             self.logger.error(f"Failed to get logs for process {name}: {e}")
             return {"status": "error", "message": str(e)}
 
-    async def get_system_info(self) -> Dict[str, Any]:
+    async def get_system_info(self) -> dict[str, Any]:
         """Get Supervisord system information.
-        
+
         Returns:
             Dict with system information
         """
@@ -263,23 +266,23 @@ class SupervisordManager:
             state = await asyncio.get_event_loop().run_in_executor(
                 None, self.server.supervisor.getState
             )
-            
+
             info = {
                 "api_version": api_version,
                 "supervisor_version": supervisor_version,
                 "state": state,
-                "server_url": self.server_url
+                "server_url": self.server_url,
             }
-            
+
             self.logger.debug("Retrieved system information")
             return {"status": "ok", "info": info}
         except Exception as e:
             self.logger.error(f"Failed to get system info: {e}")
             return {"status": "error", "message": str(e)}
 
-    async def reload_config(self) -> Dict[str, Any]:
+    async def reload_config(self) -> dict[str, Any]:
         """Reload Supervisord configuration.
-        
+
         Returns:
             Dict with operation result
         """
