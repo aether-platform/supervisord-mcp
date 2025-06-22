@@ -289,6 +289,8 @@ port=127.0.0.1:9001
 files = /etc/supervisor/conf.d/*.conf
 ```
 
+**Important**: Supervisord MCP requires the `[inet_http_server]` configuration block to be enabled with HTTP access. The tool connects to Supervisord via HTTP XML-RPC protocol and does not support Unix domain socket connections.
+
 4. Start Supervisord:
 ```bash
 supervisord -c /etc/supervisor/supervisord.conf
