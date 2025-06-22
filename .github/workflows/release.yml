@@ -5,50 +5,104 @@ on:
     tags:
       - 'v*'
 
+permissions:
+  contents: write
+
 jobs:
-  build-and-publish:
+  build:
     runs-on: ubuntu-latest
-    
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Install uv
       uses: astral-sh/setup-uv@v3
       with:
         version: "latest"
-    
+
     - name: Set up Python
       run: uv python install 3.11
-    
+
     - name: Install dependencies
-      run: |
-        uv sync --extra dev
-    
+      run: uv sync --extra dev
+
     - name: Run tests
-      run: |
-        uv run pytest tests/ -v
-    
+      run: uv run pytest tests/ -v
+
     - name: Build package
-      run: |
-        uv build
-    
-    - name: Publish to PyPI
-      env:
-        TWINE_USERNAME: __token__
-        TWINE_PASSWORD: ${{ secrets.PYPI_TOKEN }}
-      run: |
-        uv run twine upload dist/*
-    
-    - name: Create GitHub Release
-      uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: uv build
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
       with:
-        tag_name: ${{ github.ref }}
-        release_name: Release ${{ github.ref }}
+        name: dist
+        path: dist/
+
+  github-release:
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: dist
+        path: dist/
+
+    - name: Extract version from tag
+      id: version
+      run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        name: Release v${{ steps.version.outputs.VERSION }}
         body: |
-          Release ${{ github.ref }}
-          
-          See [CHANGELOG.md](CHANGELOG.md) for details.
+          ## Changes in v${{ steps.version.outputs.VERSION }}
+
+          See [CHANGELOG.md](https://github.com/aether-platform/supervisord-mcp/blob/main/CHANGELOG.md) for detailed changes.
+
+          ## Installation
+
+          ```bash
+          uv add supervisord-mcp==${{ steps.version.outputs.VERSION }}
+          ```
+
+          Or with pip:
+          ```bash
+          pip install supervisord-mcp==${{ steps.version.outputs.VERSION }}
+          ```
+
+          ## What's Included
+
+          - **Source Distribution** (`*.tar.gz`): For building from source
+          - **Wheel Distribution** (`*.whl`): For fast installation
+
+          ---
+
+          **Full Documentation**: https://github.com/aether-platform/supervisord-mcp#readme
+        files: |
+          dist/*
         draft: false
         prerelease: false
+
+  pypi-release:
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: dist
+        path: dist/
+
+    - name: Publish to PyPI
+      uses: pypa/gh-action-pypi-publish@release/v1
+      with:
+        user: __token__
+        password: ${{ secrets.PYPI_API_TOKEN }}

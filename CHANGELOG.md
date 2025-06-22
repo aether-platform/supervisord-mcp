@@ -5,7 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.0.0] - 2024-06-22
+## [Unreleased]
+
+## [1.0.1] - 2025-06-22
+
+### Changed
+- Updated release workflow to use GitHub Actions PyPI publish action
+- Replaced manual twine dependency with `pypa/gh-action-pypi-publish@release/v1`
+- Improved release process consistency with circus-mcp
+- Enhanced GitHub release notes with detailed installation instructions
+- Split release workflow into separate build, GitHub release, and PyPI publish jobs
+
+### Removed
+- Manual twine dependency from dev requirements
+
+### Technical
+- Streamlined CI/CD pipeline for better reliability
+- Added proper artifact handling between workflow jobs
+- Improved release automation and consistency
+
+## [1.0.0] - 2025-06-22
 
 ### Added
 - Initial release of Supervisord MCP
