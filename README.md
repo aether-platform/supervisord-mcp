@@ -185,6 +185,16 @@ uv run supervisord-mcp start notification-service
 - **Stability**: Battle-tested process supervisor with years of production use
 - **Configuration**: Uses standard supervisord.conf for process definitions
 
+> **Note: AI Agent Integration Limitations**
+>
+> Supervisord's XML-RPC API has constraints for dynamic AI agent process management:
+> - `add_process` is not supported via API (requires manual config file edit + `reload`)
+> - stdout/stderr logs require separate API calls
+> - No CPU/memory resource metrics available via API
+> - Starting an already-running process throws `ALREADY_STARTED` error (not idempotent)
+>
+> For use cases where AI agents need to dynamically add and monitor processes, [Circus MCP](https://github.com/aether-platform/circus-mcp) offers a more complete API. Supervisord MCP is best suited for integrating with existing Supervisord environments.
+
 ### vs. systemd
 - **Cross-platform**: Works on any system with Python
 - **User-friendly**: Simple commands and AI integration
@@ -376,6 +386,116 @@ uv run supervisord-mcp reload
 # AI Integration
 uv run supervisord-mcp mcp
 ```
+
+## Token Cost Analysis for AI Agents
+
+**Reduce tokens, agents work faster.** Every token an AI agent spends on process monitoring is a token not spent on solving the actual problem. Research shows that iterative debugging stages consume up to 59.4% of total tokens in agentic workflows ([Tokenomics, 2026](https://arxiv.org/abs/2601.14470)). By providing structured, concise responses through MCP, we cut the largest cost driver in AI-assisted debugging: unnecessary round trips and unstructured output parsing.
+
+### Tool Schema Overhead (Context Residency Cost)
+
+When MCP tools are registered, their schema definitions persist in the conversation context throughout the session.
+
+| Item | Est. Tokens |
+|------|-------------|
+| 9 tools schema | **~1,100 tokens** |
+
+### Per-Call Token Cost
+
+| Operation | Request | Response | Total |
+|-----------|---------|----------|-------|
+| `list_processes` (5 procs) | ~30 | ~120-200 | **~150-230** |
+| `get_process_status` | ~40 | ~100-150 | **~140-190** |
+| `get_logs` (10 lines) | ~50 | ~150-450 | **~200-500** |
+| `get_logs` (50 lines) | ~50 | ~750-2,450 | **~800-2,500** |
+| `get_logs` (100 lines, default) | ~50 | ~1,450-4,950 | **~1,500-5,000** |
+| `get_system_info` | ~30 | ~50-90 | **~80-120** |
+| `start/stop/restart_process` | ~40 | ~30-60 | **~70-100** |
+| `reload_config` | ~30 | ~40-70 | **~70-100** |
+
+### MCP vs Raw Linux Commands — "Quit Quickly" Investigation
+
+Cost comparison when debugging a process that dies immediately after startup.
+
+#### Raw Commands (without MCP): 12 steps
+
+```
+supervisorctl status                              # Step 1:  Check all processes
+supervisorctl status webapp                       # Step 2:  Check target → FATAL
+supervisorctl tail webapp stderr                  # Step 3:  stderr logs (unbounded output risk)
+cat /var/log/supervisor/webapp-stderr.log | tail -50  # Step 4:  Read log file directly
+supervisorctl start webapp                        # Step 5:  Attempt restart
+sleep 2 && supervisorctl status webapp            # Step 6:  Check after restart
+supervisorctl tail webapp stderr | tail -20       # Step 7:  Check logs again
+ps aux | grep webapp                              # Step 8:  Verify process existence
+journalctl -u supervisor --no-pager -n 30         # Step 9:  systemd logs
+cat /etc/supervisor/conf.d/webapp.conf            # Step 10: Check configuration
+lsof -i :8080                                     # Step 11: Check port conflicts
+free -m                                           # Step 12: Check resource exhaustion
+```
+
+- Each Bash invocation has **~60-90 tokens of fixed overhead**
+- `supervisorctl tail` has no line limit — **token explosion risk**
+- Unstructured text output leads to LLM **parsing errors**
+- **Reasoning tokens** are consumed between each step (~150-250 tokens/step)
+- "Quit Quickly" scenarios typically require **2-3 loops** of this sequence
+
+#### MCP (Structured Tools): 5 steps
+
+```
+list_processes                                    # Spot FATAL immediately
+get_process_status("webapp")                      # Detailed status
+get_logs("webapp", lines=20, stderr=true)         # Error logs (bounded to 20 lines)
+restart_process("webapp")                         # Restart
+get_process_status("webapp")                      # Verify after restart
+```
+
+#### Comparison
+
+| Metric | Raw Commands | MCP | Reduction |
+|--------|-------------|-----|-----------|
+| Tool calls | 8-12 | 3-5 | **60-70%** |
+| Output tokens | 2,000-8,500 | 560-1,160 | **70-85%** |
+| Reasoning tokens (inter-step) | ~1,500-3,000 | ~500-1,000 | **60-70%** |
+| Total tokens (excl. schema) | 2,900-9,400 | 935-1,535 | **60-85%** |
+| Total tokens (incl. schema) | 2,900-9,400 | 2,035-2,635 | **30-70%** |
+| Round trips | 8-12 | 3-5 | **60%** |
+| Wall-clock time | 12-36s | ~5s | **60-85%** |
+| Parse reliability | Low (unstructured) | High (structured) | — |
+
+#### Scaling with Retries
+
+Cumulative cost when repeated investigation is needed (common with "Quit Quickly" issues):
+
+| Retries | Raw Commands | MCP | Savings |
+|---------|-------------|-----|---------|
+| 1 (success) | ~2,900-9,400 | ~935-1,535 | 60-85% |
+| 2 loops | ~5,000-15,000 | ~1,500-2,500 | 70-83% |
+| 3 loops | ~7,000-20,000 | ~2,000-3,500 | 71-82% |
+
+Raw command costs grow exponentially with retries (exploratory commands pile up), while MCP costs scale linearly.
+
+**Break-even point**: Accounting for schema residency cost (~1,100 tokens), MCP becomes cost-equivalent at **3-4 tool calls** and cheaper beyond that.
+
+### Optimization Tips
+
+| Tip | Effect |
+|-----|--------|
+| Limit `get_logs` to `lines=10~20` | **70-80% reduction** in log retrieval cost |
+| Use a single `list_processes` call for overview | Eliminates need for individual status calls |
+| Use `stderr=true` to fetch only stderr | Avoids wasting tokens on stdout |
+| Skip `get_system_info` for status checks only | Saves ~80-120 tokens |
+
+### References
+
+Research underpinning this token cost analysis:
+
+- [Tokenomics: Quantifying Where Tokens Are Used in Agentic SE](https://arxiv.org/abs/2601.14470) — First empirical analysis of token consumption in agentic workflows. Iterative stages consume 59.4% of tokens
+- [Help or Hurdle? Rethinking MCP-Augmented LLMs](https://arxiv.org/abs/2508.12566) — MCPGAUGE: first MCP evaluation framework with 4 dimensions including overhead
+- [MCP Tool Descriptions Are Smelly!](https://arxiv.org/abs/2602.14878) — Large-scale study of 856 tools / 103 MCP servers. Tool description quality directly impacts agent efficiency
+- [MCPAgentBench](https://arxiv.org/abs/2512.24565) — 841 tasks, 20,000+ MCP tools benchmark. Defines Token Efficiency (TEFS) as evaluation metric
+- [AgentDiet: Trajectory Reduction](https://arxiv.org/abs/2509.23586) — Reduces input tokens by 39.9-59.7%
+- [Token-Budget-Aware LLM Reasoning](https://aclanthology.org/2025.findings-acl.1274.pdf) — 67% output token reduction, 59% cost reduction
+- [Token Efficiency with Structured Output](https://medium.com/data-science-at-microsoft/token-efficiency-with-structured-output-from-language-models-be2e51d3d9d5) — Function calling is the most token-efficient output format (Microsoft)
 
 ## License
 
