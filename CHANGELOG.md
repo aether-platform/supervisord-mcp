@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-11-22
+
+### Fixed
+- Pin the MCP SDK to `mcp>=1.30,<2`. Without an upper bound a fresh install resolved
+  `mcp` 2.x and the server crashed on startup (`'Server' object has no attribute 'list_tools'`).
+- Logging now goes to stderr. Previously log lines were written to stdout and corrupted
+  the MCP stdio JSON-RPC stream.
+- `get_system_info` no longer returns Basic auth credentials embedded in the server URL.
+  Credentials are also redacted from error messages and logs.
+- `get_logs` is bounded: it uses `tailProcess*Log` with a byte window (`max_bytes`,
+  default 16 KiB, max 256 KiB) and returns at most `lines` trailing lines (max 1000).
+  Previously `lines` was passed as a byte offset, so large or negative values returned
+  the whole log.
+- Tool failures are returned with `isError: true` instead of a success result.
+- mypy errors that kept CI red since 2026-03.
+
+### Added
+- `SUPERVISORD_URL`, `SUPERVISORD_USERNAME`, `SUPERVISORD_PASSWORD` environment
+  variables (and `--username` / `--password` options).
+- `max_bytes` argument for the `get_logs` tool.
+- Regression tests, including an end-to-end stdio test against a real supervisord.
+
+### Changed
+- `add_process` validates the process name and its "configuration prepared" result is
+  no longer shown as an error.
+- `__version__` is read from the installed package metadata.
+
+### Removed
+- Unused runtime dependencies `supervisor` and `psutil`, and the unused `logging` extra.
+
 ## [1.0.1] - 2025-06-22
 
 ### Changed

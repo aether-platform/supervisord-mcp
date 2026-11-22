@@ -47,10 +47,12 @@ Supervisord MCP provides direct process control through the Model Context Protoc
 ### Installation
 
 ```bash
-uv add supervisord-mcp 'mcp<2'
+uv add 'supervisord-mcp>=1.1.0'
 ```
 
-> **Temporary workaround (until 1.1.0):** the current release does not cap its `mcp` dependency, so a fresh install resolves `mcp` 2.x and the MCP server crashes on startup with `AttributeError: 'Server' object has no attribute 'list_tools'`. Until 1.1.0 (which pins `mcp>=1.30,<2`) is released, pin `mcp<2` as shown in this README: add `'mcp<2'` when installing, or pass `--with 'mcp<2'` when launching (e.g. `uv run --with 'mcp<2' supervisord-mcp mcp`, or `uvx --with 'mcp<2' supervisord-mcp mcp` without installing). Once 1.1.0 is out, this extra pin can be dropped.
+> **MCP SDK requirement:** 1.1.0 and later depend on `mcp>=1.30,<2` (the MCP Python SDK 1.x line), so a plain install or `uvx supervisord-mcp mcp` resolves a working SDK and no extra pin is needed. Support for `mcp` 2.x is planned for 2.0.0.
+>
+> **Only if you are still on 1.0.x:** 1.0.x does not cap its `mcp` dependency, so a fresh install resolves `mcp` 2.x and the MCP server crashes on startup with `AttributeError: 'Server' object has no attribute 'list_tools'`. Upgrade to 1.1.0, or pin `mcp<2` yourself (`uv add supervisord-mcp 'mcp<2'`, or launch with `uvx --with 'mcp<2' supervisord-mcp mcp`).
 
 ### Basic Usage
 
@@ -102,7 +104,7 @@ Supervisord MCP includes built-in MCP protocol support, allowing AI agents to ma
 
 ```bash
 # Start MCP server for AI integration
-uv run --with 'mcp<2' supervisord-mcp mcp
+uv run supervisord-mcp mcp
 ```
 
 Configure in your AI agent using the **recommended stdio transport**:
@@ -111,8 +113,13 @@ Configure in your AI agent using the **recommended stdio transport**:
   "mcpServers": {
     "supervisord-mcp": {
       "command": "uv",
-      "args": ["run", "--with", "mcp<2", "supervisord-mcp", "mcp"],
-      "cwd": "/path/to/your/project"
+      "args": ["run", "supervisord-mcp", "mcp"],
+      "cwd": "/path/to/your/project",
+      "env": {
+        "SUPERVISORD_URL": "http://127.0.0.1:9001/RPC2",
+        "SUPERVISORD_USERNAME": "admin",
+        "SUPERVISORD_PASSWORD": "change-me"
+      }
     }
   }
 }
@@ -124,7 +131,7 @@ For different project setups:
   "mcpServers": {
     "supervisord-mcp": {
       "command": "uv",
-      "args": ["run", "--with", "mcp<2", "supervisord-mcp", "mcp"],
+      "args": ["run", "supervisord-mcp", "mcp"],
       "cwd": "/app"
     }
   }
@@ -250,11 +257,10 @@ uv run supervisord-mcp reload
 
 ```bash
 # From PyPI (recommended)
-# 'mcp<2' is a temporary pin until 1.1.0 (see the note under Quick Start)
-uv add supervisord-mcp 'mcp<2'
+uv add 'supervisord-mcp>=1.1.0'
 
 # With pip (alternative)
-pip install supervisord-mcp 'mcp<2'
+pip install 'supervisord-mcp>=1.1.0'
 
 # From source
 git clone https://github.com/aether-platform/supervisord-mcp.git
@@ -336,12 +342,30 @@ redirect_stderr=true
 stdout_logfile=/var/log/webapp.log
 ```
 
-### Custom Server URL
+### Custom Server URL and Authentication
 
 ```bash
 # Use custom Supervisord server
 uv run supervisord-mcp --server-url http://localhost:9001/RPC2 list-processes
+
+# Basic auth: prefer environment variables so the password does not appear in
+# `ps` output or in client config command lines
+export SUPERVISORD_URL=http://127.0.0.1:9001/RPC2
+export SUPERVISORD_USERNAME=admin
+export SUPERVISORD_PASSWORD=change-me
+uv run supervisord-mcp list-processes
 ```
+
+`--server-url`, `--username` and `--password` map to `SUPERVISORD_URL`, `SUPERVISORD_USERNAME` and `SUPERVISORD_PASSWORD`. Credentials embedded in the URL (`http://user:pass@host:9001/RPC2`) still work, but since 1.1.0 they are stripped before display: no tool response, error message or log line contains the password.
+
+## Security Notes
+
+- **stdout is reserved for MCP.** In `mcp` mode all logging goes to stderr, so the JSON-RPC stream on stdout stays clean.
+- **Credentials are never echoed.** `get_system_info` reports the server URL without userinfo and only says whether authentication is configured.
+- **Log output is bounded.** `get_logs` returns at most `lines` trailing lines (default 100, max 1000) read from at most `max_bytes` trailing bytes (default 16 KiB, max 256 KiB). Out-of-range values are rejected. Process logs may still contain secrets a process printed itself, so treat them as sensitive.
+- **The XML-RPC endpoint is the trust boundary.** Anyone who can reach supervisord's `inet_http_server` can start/stop processes or shut supervisord down. Bind it to `127.0.0.1` and set `username`/`password` (the bundled `supervisord.conf` is a local-development example without auth).
+- **Write tools are exposed.** `start_process`, `stop_process`, `restart_process` and `reload_config` are available to the agent. A read-only default is planned for 2.0.0.
+- Tool failures are reported with `isError: true`.
 
 ## MCP Tools Available
 
@@ -353,7 +377,7 @@ The following tools are available for AI agents:
 - **restart_process**: Restart a process
 - **list_processes**: List all processes
 - **get_process_status**: Get detailed process status
-- **get_logs**: Retrieve process logs (stdout/stderr)
+- **get_logs**: Retrieve the tail of process logs (stdout/stderr), bounded by `lines` (≤1000) and `max_bytes` (≤256 KiB)
 - **get_system_info**: Get Supervisord system information
 - **reload_config**: Reload Supervisord configuration
 
@@ -386,8 +410,8 @@ uv run supervisord-mcp info
 # Configuration
 uv run supervisord-mcp reload
 
-# AI Integration (--with 'mcp<2' is temporary until 1.1.0)
-uv run --with 'mcp<2' supervisord-mcp mcp
+# AI Integration
+uv run supervisord-mcp mcp
 ```
 
 ## Token Cost Analysis for AI Agents

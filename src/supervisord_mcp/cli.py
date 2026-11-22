@@ -10,31 +10,68 @@ from typing import Any
 
 import click
 
-from .manager import SupervisordManager
+from .manager import DEFAULT_SERVER_URL, SupervisordManager
 from .mcp_server import SupervisordMCPServer
 
 
 def setup_logging(verbose: bool = False) -> None:
-    """Setup logging configuration."""
+    """Setup logging configuration.
+
+    Logs always go to stderr: in MCP stdio mode stdout carries the JSON-RPC stream,
+    and anything else written there corrupts the protocol.
+    """
     level = logging.DEBUG if verbose else logging.INFO
     logging.basicConfig(
         level=level,
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        handlers=[logging.StreamHandler(sys.stdout)],
+        handlers=[logging.StreamHandler(sys.stderr)],
+        force=True,
+    )
+
+
+def _manager(ctx: click.Context) -> SupervisordManager:
+    return SupervisordManager(
+        ctx.obj["server_url"], username=ctx.obj["username"], password=ctx.obj["password"]
     )
 
 
 @click.group()
 @click.option("--verbose", "-v", is_flag=True, help="Enable verbose logging")
 @click.option(
-    "--server-url", default="http://localhost:9001/RPC2", help="Supervisord XML-RPC server URL"
+    "--server-url",
+    default=DEFAULT_SERVER_URL,
+    envvar="SUPERVISORD_URL",
+    show_envvar=True,
+    help="Supervisord XML-RPC server URL",
+)
+@click.option(
+    "--username",
+    default=None,
+    envvar="SUPERVISORD_USERNAME",
+    show_envvar=True,
+    help="Basic auth username",
+)
+@click.option(
+    "--password",
+    default=None,
+    envvar="SUPERVISORD_PASSWORD",
+    show_envvar=True,
+    help="Basic auth password (prefer the environment variable over the command line)",
 )
 @click.pass_context
-def cli(ctx: click.Context, verbose: bool, server_url: str) -> None:
+def cli(
+    ctx: click.Context,
+    verbose: bool,
+    server_url: str,
+    username: str | None,
+    password: str | None,
+) -> None:
     """Supervisord MCP - Process management with MCP integration."""
     setup_logging(verbose)
     ctx.ensure_object(dict)
     ctx.obj["server_url"] = server_url
+    ctx.obj["username"] = username
+    ctx.obj["password"] = password
     ctx.obj["verbose"] = verbose
 
 
@@ -42,8 +79,9 @@ def cli(ctx: click.Context, verbose: bool, server_url: str) -> None:
 @click.pass_context
 async def mcp(ctx: click.Context) -> None:
     """Start MCP server for AI agent integration."""
-    server_url = ctx.obj["server_url"]
-    server = SupervisordMCPServer(server_url)
+    server = SupervisordMCPServer(
+        ctx.obj["server_url"], username=ctx.obj["username"], password=ctx.obj["password"]
+    )
     await server.run()
 
 
@@ -65,7 +103,7 @@ async def add(
     numprocs: int,
 ) -> None:
     """Add a new process to Supervisord."""
-    manager = SupervisordManager(ctx.obj["server_url"])
+    manager = _manager(ctx)
 
     if not await manager.connect():
         click.echo("Failed to connect to Supervisord", err=True)
@@ -92,7 +130,7 @@ async def add(
 @click.pass_context
 async def start(ctx: click.Context, name: str) -> None:
     """Start a process."""
-    manager = SupervisordManager(ctx.obj["server_url"])
+    manager = _manager(ctx)
 
     if not await manager.connect():
         click.echo("Failed to connect to Supervisord", err=True)
@@ -112,7 +150,7 @@ async def start(ctx: click.Context, name: str) -> None:
 @click.pass_context
 async def stop(ctx: click.Context, name: str) -> None:
     """Stop a process."""
-    manager = SupervisordManager(ctx.obj["server_url"])
+    manager = _manager(ctx)
 
     if not await manager.connect():
         click.echo("Failed to connect to Supervisord", err=True)
@@ -132,7 +170,7 @@ async def stop(ctx: click.Context, name: str) -> None:
 @click.pass_context
 async def restart(ctx: click.Context, name: str) -> None:
     """Restart a process."""
-    manager = SupervisordManager(ctx.obj["server_url"])
+    manager = _manager(ctx)
 
     if not await manager.connect():
         click.echo("Failed to connect to Supervisord", err=True)
@@ -151,7 +189,7 @@ async def restart(ctx: click.Context, name: str) -> None:
 @click.pass_context
 async def list_processes(ctx: click.Context) -> None:
     """List all processes."""
-    manager = SupervisordManager(ctx.obj["server_url"])
+    manager = _manager(ctx)
 
     if not await manager.connect():
         click.echo("Failed to connect to Supervisord", err=True)
@@ -194,7 +232,7 @@ async def list_processes(ctx: click.Context) -> None:
 @click.pass_context
 async def status(ctx: click.Context, name: str) -> None:
     """Get process status."""
-    manager = SupervisordManager(ctx.obj["server_url"])
+    manager = _manager(ctx)
 
     if not await manager.connect():
         click.echo("Failed to connect to Supervisord", err=True)
@@ -216,12 +254,12 @@ async def status(ctx: click.Context, name: str) -> None:
 
 @cli.command()
 @click.argument("name")
-@click.option("--lines", default=100, help="Number of lines to show")
+@click.option("--lines", default=100, help="Number of trailing lines to show (max 1000)")
 @click.option("--stderr", is_flag=True, help="Show stderr instead of stdout")
 @click.pass_context
 async def logs(ctx: click.Context, name: str, lines: int, stderr: bool) -> None:
     """Get process logs."""
-    manager = SupervisordManager(ctx.obj["server_url"])
+    manager = _manager(ctx)
 
     if not await manager.connect():
         click.echo("Failed to connect to Supervisord", err=True)
@@ -234,6 +272,8 @@ async def logs(ctx: click.Context, name: str, lines: int, stderr: bool) -> None:
         if logs:
             stream_type = "stderr" if stderr else "stdout"
             click.echo(f"Last {len(logs)} lines from {name} ({stream_type}):\n")
+            if result.get("truncated"):
+                click.echo("(older output omitted)\n")
             for line in logs:
                 if line.strip():  # Skip empty lines
                     click.echo(line)
@@ -248,7 +288,7 @@ async def logs(ctx: click.Context, name: str, lines: int, stderr: bool) -> None:
 @click.pass_context
 async def info(ctx: click.Context) -> None:
     """Get Supervisord system information."""
-    manager = SupervisordManager(ctx.obj["server_url"])
+    manager = _manager(ctx)
 
     if not await manager.connect():
         click.echo("Failed to connect to Supervisord", err=True)
@@ -273,7 +313,7 @@ async def info(ctx: click.Context) -> None:
 @click.pass_context
 async def reload(ctx: click.Context) -> None:
     """Reload Supervisord configuration."""
-    manager = SupervisordManager(ctx.obj["server_url"])
+    manager = _manager(ctx)
 
     if not await manager.connect():
         click.echo("Failed to connect to Supervisord", err=True)
@@ -311,6 +351,7 @@ for command_name in [
     "reload",
 ]:
     command = cli.commands[command_name]
+    assert command.callback is not None
     command.callback = run_async_command(command.callback)
 
 

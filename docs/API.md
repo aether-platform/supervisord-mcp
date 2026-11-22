@@ -103,12 +103,15 @@ Start time: 1672531200
 
 #### `get_logs`
 
-Retrieve process logs.
+Retrieve the tail of a process log. The response is always bounded.
 
 **Parameters:**
 - `name` (string, required): Process name
-- `lines` (integer, optional): Number of lines to retrieve (default: 100)
+- `lines` (integer, optional): Maximum number of trailing lines to return (default: 100, range 1–1000)
+- `max_bytes` (integer, optional): Maximum number of trailing log bytes to read (default: 16384, range 1–262144)
 - `stderr` (boolean, optional): Get stderr instead of stdout (default: false)
+
+Out-of-range values are rejected with `isError: true`. When older output was cut off, the header says `(older output omitted)`.
 
 **Returns:**
 ```
@@ -134,8 +137,11 @@ Supervisord System Information:
 API Version: 3.0
 Supervisor Version: 4.2.4
 Server URL: http://localhost:9001/RPC2
+Authentication: configured
 State: RUNNING
 ```
+
+The server URL never contains credentials, even if they were embedded in `--server-url`.
 
 #### `reload_config`
 
@@ -186,7 +192,11 @@ Add a new process configuration (requires manual config update).
 ### Global Options
 
 - `--verbose, -v`: Enable verbose logging
-- `--server-url`: Supervisord XML-RPC server URL (default: http://localhost:9001/RPC2)
+- `--server-url` / `SUPERVISORD_URL`: Supervisord XML-RPC server URL (default: http://localhost:9001/RPC2)
+- `--username` / `SUPERVISORD_USERNAME`: Basic auth username
+- `--password` / `SUPERVISORD_PASSWORD`: Basic auth password (prefer the environment variable)
+
+All tool errors are returned with `isError: true`. Logs are written to stderr only.
 
 ### Process Management
 
