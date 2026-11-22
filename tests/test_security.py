@@ -213,3 +213,9 @@ async def test_system_info_tool_hides_password():
 
 async def _async_true() -> bool:
     return True
+
+
+def test_server_reports_package_version():
+    from importlib.metadata import version
+
+    assert SupervisordMCPServer().server.version == version("supervisord-mcp")

@@ -39,7 +39,9 @@ class SupervisordMCPServer:
             username: Basic auth username
             password: Basic auth password
         """
-        self.server: Server = Server("supervisord-mcp")
+        from . import __version__
+
+        self.server: Server = Server("supervisord-mcp", version=__version__)
         self.manager = SupervisordManager(server_url, username=username, password=password)
         self.logger = logging.getLogger(__name__)
         self._setup_tools()
