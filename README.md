@@ -47,8 +47,10 @@ Supervisord MCP provides direct process control through the Model Context Protoc
 ### Installation
 
 ```bash
-uv add supervisord-mcp
+uv add supervisord-mcp 'mcp<2'
 ```
+
+> **Temporary workaround (until 1.1.0):** the current release does not cap its `mcp` dependency, so a fresh install resolves `mcp` 2.x and the MCP server crashes on startup with `AttributeError: 'Server' object has no attribute 'list_tools'`. Until 1.1.0 (which pins `mcp>=1.30,<2`) is released, pin `mcp<2` as shown in this README: add `'mcp<2'` when installing, or pass `--with 'mcp<2'` when launching (e.g. `uv run --with 'mcp<2' supervisord-mcp mcp`, or `uvx --with 'mcp<2' supervisord-mcp mcp` without installing). Once 1.1.0 is out, this extra pin can be dropped.
 
 ### Basic Usage
 
@@ -100,7 +102,7 @@ Supervisord MCP includes built-in MCP protocol support, allowing AI agents to ma
 
 ```bash
 # Start MCP server for AI integration
-uv run supervisord-mcp mcp
+uv run --with 'mcp<2' supervisord-mcp mcp
 ```
 
 Configure in your AI agent using the **recommended stdio transport**:
@@ -109,7 +111,7 @@ Configure in your AI agent using the **recommended stdio transport**:
   "mcpServers": {
     "supervisord-mcp": {
       "command": "uv",
-      "args": ["run", "supervisord-mcp", "mcp"],
+      "args": ["run", "--with", "mcp<2", "supervisord-mcp", "mcp"],
       "cwd": "/path/to/your/project"
     }
   }
@@ -122,7 +124,7 @@ For different project setups:
   "mcpServers": {
     "supervisord-mcp": {
       "command": "uv",
-      "args": ["run", "supervisord-mcp", "mcp"],
+      "args": ["run", "--with", "mcp<2", "supervisord-mcp", "mcp"],
       "cwd": "/app"
     }
   }
@@ -248,10 +250,11 @@ uv run supervisord-mcp reload
 
 ```bash
 # From PyPI (recommended)
-uv add supervisord-mcp
+# 'mcp<2' is a temporary pin until 1.1.0 (see the note under Quick Start)
+uv add supervisord-mcp 'mcp<2'
 
 # With pip (alternative)
-pip install supervisord-mcp
+pip install supervisord-mcp 'mcp<2'
 
 # From source
 git clone https://github.com/aether-platform/supervisord-mcp.git
@@ -383,8 +386,8 @@ uv run supervisord-mcp info
 # Configuration
 uv run supervisord-mcp reload
 
-# AI Integration
-uv run supervisord-mcp mcp
+# AI Integration (--with 'mcp<2' is temporary until 1.1.0)
+uv run --with 'mcp<2' supervisord-mcp mcp
 ```
 
 ## Token Cost Analysis for AI Agents
